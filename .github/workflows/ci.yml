@@ -8,7 +8,7 @@ jobs:
   shell-checks:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Syntax check shell scripts
         run: |
           for f in scripts/*.sh; do
