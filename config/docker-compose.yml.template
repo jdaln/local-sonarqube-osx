@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: "__POSTGRES_IMAGE_REF__"
+    platform: __PLATFORM__
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${SONARQUBE_DATABASE_NAME}"
+      POSTGRES_USER: "${SONARQUBE_DATABASE_USER}"
+      POSTGRES_PASSWORD: "${SONARQUBE_DATABASE_PASSWORD}"
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - "__APP_ROOT__/state/postgres:/var/lib/postgresql/data"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  sonarqube:
+    image: "__SONARQUBE_IMAGE_REF__"
+    platform: linux/arm64
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+__PORTS__
+    environment:
+      SONAR_JDBC_URL: "jdbc:postgresql://postgres:5432/${SONARQUBE_DATABASE_NAME}"
+      SONAR_JDBC_USERNAME: "${SONARQUBE_DATABASE_USER}"
+      SONAR_JDBC_PASSWORD: "${SONARQUBE_DATABASE_PASSWORD}"
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - "__APP_ROOT__/state/sonarqube/data:/opt/sonarqube/data"
+      - "__APP_ROOT__/state/sonarqube/extensions:/opt/sonarqube/extensions"
+      - "__APP_ROOT__/state/sonarqube/logs:/opt/sonarqube/logs"
+      - "__APP_ROOT__/state/sonarqube/temp:/opt/sonarqube/temp"
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+

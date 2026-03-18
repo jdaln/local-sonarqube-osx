@@ -1,0 +1,22 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  shell-checks:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Syntax check shell scripts
+        run: |
+          for f in scripts/*.sh; do
+            zsh -n "$f"
+          done
+      - name: Lint plist templates
+        run: |
+          for f in launchd/*.plist; do
+            plutil -lint "$f"
+          done
+

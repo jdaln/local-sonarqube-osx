@@ -1,0 +1,15 @@
+name: cyclonedx-sbom
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: anchore/sbom-action@v0
+        with:
+          path: .
+          output-file: sbom.spdx.json
+
