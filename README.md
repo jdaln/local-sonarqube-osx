@@ -51,8 +51,21 @@ Use `--purge` to also remove all persistent database data and Docker volumes.
 ```sh
 ./scripts/scan_project_with_sonarqube.sh \
   --repo /absolute/path/to/repo \
-  --project-key my-project \
-  --prepare
+  --project-key my-project
+```
+
+Use `--prepare` only when you want framework-specific prep such as `npm ci`, Angular/Jest/Karma test coverage, Maven/Gradle test phases, or similar build-time setup before scanning. Omitting `--prepare` skips those test/coverage steps and is the faster default.
+
+For Java projects, `--prepare` still attempts the build-integrated Maven/Gradle scan first. If the project build breaks, the wrapper now falls back to a generic Sonar scan using any discovered compiled classes so you still get a SonarQube project plus imported SARIF findings instead of a hard stop.
+
+Selective skips are also supported. `--skip-dependency-scans` omits both Trivy and OSV-Scanner. If you want to keep Trivy and skip only OSV dependency checks, use `--skip-tool osv-scanner` instead. Example:
+
+```sh
+./scripts/scan_project_with_sonarqube.sh \
+  --repo /absolute/path/to/repo \
+  --project-key my-project-no-gitleaks-no-osv \
+  --skip-tool gitleaks \
+  --skip-tool osv-scanner
 ```
 
 ### Monitor Scan

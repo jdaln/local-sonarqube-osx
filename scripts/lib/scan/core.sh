@@ -232,13 +232,14 @@ initialize_run_artifacts() {
     exit 1
   fi
 
-  local tool_versions_blob input_sarif_blob extra_blob tool
+  local tool_versions_blob input_sarif_blob extra_blob skip_blob tool
   tool_versions_blob=""
   for tool in rg opengrep semgrep gitleaks checkov tfsec trivy osv-scanner codeql gosec bandit hadolint cppcheck infer rats valgrind mvn sonar-scanner npm docker; do
     tool_versions_blob+="${tool}"$'\t'"$(command_version_line "$tool")"$'\n'
   done
   input_sarif_blob="$(printf '%s\n' "${sarif_reports[@]}")"
   extra_blob="$(printf '%s\n' "${extra_properties[@]}")"
+  skip_blob="$(printf '%s\n' "${skip_tools[@]}")"
 
   RUN_MANIFEST_PATH="$run_manifest_file" \
   RUN_RESUME="${resume_run_id:-}" \
@@ -256,6 +257,7 @@ initialize_run_artifacts() {
   RUN_DRY_RUN="$dry_run" \
   RUN_CREATED_AT="$run_started_at" \
   RUN_EXTRA_BLOB="$extra_blob" \
+  RUN_SKIP_TOOLS_BLOB="$skip_blob" \
   RUN_INPUT_SARIF_BLOB="$input_sarif_blob" \
   RUN_TOOL_VERSIONS_BLOB="$tool_versions_blob" \
   python3 - <<'PY'
@@ -322,6 +324,7 @@ def immutable_view(payload):
         "prepare",
         "host_url",
         "dry_run",
+        "skip_tools",
         "extra_properties",
         "input_sarif",
         "tool_versions",
@@ -350,6 +353,7 @@ candidate = {
     "prepare": os.environ.get("RUN_PREPARE", "false") == "true",
     "host_url": os.environ.get("RUN_HOST_URL", ""),
     "dry_run": os.environ.get("RUN_DRY_RUN", "false") == "true",
+    "skip_tools": blob_to_list("RUN_SKIP_TOOLS_BLOB"),
     "extra_properties": blob_to_list("RUN_EXTRA_BLOB"),
     "input_sarif": blob_to_list("RUN_INPUT_SARIF_BLOB"),
     "tool_versions": blob_to_map("RUN_TOOL_VERSIONS_BLOB"),
@@ -401,6 +405,18 @@ finalize_run_success() {
   run_finalized="true"
   write_run_status
   record_run_event "info" "scan completed successfully"
+}
+
+finalize_run_failure() {
+  local message="${1:-scan failed}"
+  run_result="failed"
+  run_state="failed"
+  run_phase="failed"
+  run_message="$message"
+  run_completed_at="$(now_utc)"
+  run_finalized="true"
+  write_run_status
+  record_run_event "error" "$message"
 }
 
 handle_optional_failure() {

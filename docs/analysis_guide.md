@@ -7,9 +7,20 @@
 ```sh
 ./scripts/scan_project_with_sonarqube.sh \
   --repo /absolute/path/to/repo \
-  --project-key my-project \
-  --prepare
+  --project-key my-project
 ```
+
+Fast path: omit `--prepare` to skip repo-specific prep like dependency installation, frontend test coverage, or build/test phases.
+
+`--prepare` is optional and intended for cases where you want the wrapper to run those extra prep steps before scanning.
+
+For Java Maven/Gradle repos, `--prepare` tries the build-integrated scanner path first. If the build fails, the wrapper retries with a generic scanner using any discovered class directories so SonarQube analysis and SARIF import can still complete on partially broken projects.
+
+Selective skips are available when you want to keep the scan but drop specific tool families.
+
+- `--skip-dependency-scans` skips both `trivy` and `osv-scanner`.
+- `--skip-tool osv-scanner` keeps `trivy` enabled while skipping only OSV dependency checks.
+- `--skip-tool gitleaks` skips secret scanning if you want to rely on the other analyzers only.
 
 **Order of execution:**
 1. Resolve SonarQube URL (defaults to local stack).

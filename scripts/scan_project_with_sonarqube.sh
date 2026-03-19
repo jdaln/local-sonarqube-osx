@@ -18,6 +18,7 @@ security_tools_mode="auto"
 codeql_suite="default"
 build_command=""
 valgrind_target=""
+typeset -a skip_tools
 run_id=""
 resume_run_id=""
 run_dir=""
@@ -55,12 +56,15 @@ Options:
   --project-key KEY        SonarQube project key.
   --project-name NAME      SonarQube project name. Defaults to repo basename.
   --profile NAME           auto | js-ts | java-maven | java-gradle | generic
-  --prepare                Run supported local prep steps before scanning.
+  --prepare                Run supported prep before scanning (for example npm install, frontend tests/coverage, or build/test phases).
   --host-url URL           SonarQube URL. Default: local sonarqube-serv URL or http://127.0.0.1:9000.
   --token TOKEN            Use an existing Sonar token.
   --app-root PATH          Installed sonarqube-serv root for local admin creds.
   --security-tools MODE    auto | off | required (default: auto).
   --skip-security-tools    Shortcut for --security-tools off.
+  --skip-tool TOOL         Skip one integrated security tool. Repeatable.
+  --skip-dependency-scans  Skip dependency SCA helpers together (currently trivy and osv-scanner).
+                           Use --skip-tool osv-scanner if you want to keep trivy enabled.
   --codeql-suite SUITE     default | security-extended | security-and-quality (default: default).
   --build-command CMD      Explicit build command for AST tools like CodeQL and Infer (e.g. 'make').
   --valgrind-target PATH   Path to a compiled executable to run under Valgrind (e.g. './app').
@@ -116,6 +120,14 @@ while [[ $# -gt 0 ]]; do
       security_tools_mode="off"
       shift 1
       ;;
+    --skip-tool)
+      skip_tools+=("$2")
+      shift 2
+      ;;
+    --skip-dependency-scans)
+      skip_tools+=("trivy" "osv-scanner")
+      shift 1
+      ;;
     --codeql-suite)
       codeql_suite="$2"
       shift 2
@@ -165,6 +177,38 @@ done
   exit 1
 }
 
+typeset -A skip_tool_lookup
+typeset -a allowed_skip_tools
+allowed_skip_tools=(
+  gitleaks
+  semgrep
+  iac
+  trivy
+  osv-scanner
+  codeql
+  gosec
+  bandit
+  hadolint
+  findsecbugs
+  cppcheck
+  infer
+  rats
+  valgrind
+)
+
+if (( ${#skip_tools[@]} > 0 )); then
+  typeset tool
+  for tool in "${skip_tools[@]}"; do
+    if (( ${allowed_skip_tools[(Ie)$tool]} == 0 )); then
+      print -u2 -- "unknown tool for --skip-tool: $tool"
+      print -u2 -- "supported values: ${(j:, :)allowed_skip_tools}"
+      exit 1
+    fi
+    skip_tool_lookup[$tool]=1
+  done
+  skip_tools=("${(@k)skip_tool_lookup}")
+fi
+
 [[ "$codeql_suite" == "default" || "$codeql_suite" == "security-extended" || "$codeql_suite" == "security-and-quality" ]] || {
   print -u2 "--codeql-suite must be one of: default, security-extended, security-and-quality"
   exit 1
@@ -194,6 +238,14 @@ fi
 
 resolved_profile="$(detect_profile)"
 initialize_run_artifacts
+
+TRAPEXIT() {
+  local exit_code=$?
+  if (( exit_code != 0 )) && [[ "$run_finalized" != "true" ]] && [[ "$run_status_initialized" == "true" ]]; then
+    finalize_run_failure "scan failed during ${run_phase}: ${run_message}"
+  fi
+  return $exit_code
+}
 
 set_run_phase "preflight" "running" "resolving Sonar endpoint and credentials"
 if [[ "$dry_run" != "true" ]]; then
@@ -252,12 +304,21 @@ print -r -- "$command_blob" > "$run_dir/scanner-command.txt"
 
 scan_started_at="$(date -u +"%Y-%m-%dT%H:%M:%S+0000")"
 set_run_phase "scanner-run" "running" "running Sonar scanner"
-execute_multiline_command "$command_blob"
+if ! execute_scanner_with_recovery "$command_blob"; then
+  finalize_run_failure "Sonar scanner failed"
+  exit 1
+fi
 
 set_run_phase "background-task" "running" "waiting for Sonar compute engine task"
-wait_for_background_task
+if ! wait_for_background_task; then
+  finalize_run_failure "Sonar background task failed"
+  exit 1
+fi
 
 set_run_phase "external-import-check" "running" "verifying external report imports"
-verify_external_issue_imports
+if ! verify_external_issue_imports; then
+  finalize_run_failure "external issue import verification failed"
+  exit 1
+fi
 
 finalize_run_success

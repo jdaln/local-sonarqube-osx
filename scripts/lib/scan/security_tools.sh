@@ -47,6 +47,11 @@ js_ts_prepare() {
   fi
 }
 
+tool_is_skipped() {
+  local tool="$1"
+  [[ -n "${skip_tool_lookup[$tool]:-}" ]]
+}
+
 run_semgrep_security() {
   local report="$repo/.sonar-local/security/semgrep.sarif"
 
@@ -587,6 +592,13 @@ run_security_step() {
   before_sarif=${#sarif_reports[@]}
   before_spotbugs=${#spotbugs_reports[@]}
 
+  if tool_is_skipped "$tool"; then
+    log_info "skipping ${tool} by user request"
+    set_tool_status "$tool" "disabled"
+    record_run_event "info" "security-tools: skipped ${tool} by user request"
+    return 0
+  fi
+
   set_tool_status "$tool" "running"
   if ! "$fn"; then
     set_tool_status "$tool" "failed"
@@ -746,4 +758,3 @@ run_security_pipeline() {
   run_security_step "rats" run_rats_security || return 1
   run_security_step "valgrind" run_valgrind_security || return 1
 }
-
