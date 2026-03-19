@@ -1,4 +1,19 @@
-.DS_Store
-.stage-install/
-config/resolved-images.env
+# Local SonarQube scan artifacts
+.sonar-local/
 
+# Scanner work directory
+.scannerwork/
+
+# Environment files
+*.env
+!sonarqube-serv.env.example
+
+# macOS system files
+.DS_Store
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Node.js
+node_modules/
