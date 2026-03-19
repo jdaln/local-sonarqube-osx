@@ -23,23 +23,36 @@ done
 load_runtime_env "$app_root/config/sonarqube-serv.env"
 
 status_url="http://${SONARQUBE_SERVICE_HOST}:${SONARQUBE_SERVICE_PORT}/api/system/status"
-auth_url="http://${SONARQUBE_SERVICE_HOST}:${SONARQUBE_SERVICE_PORT}/api/authentication/validate"
+auth_probe_url="http://${SONARQUBE_SERVICE_HOST}:${SONARQUBE_SERVICE_PORT}/api/users/search?logins=${SONARQUBE_ADMIN_LOGIN}"
 change_url="http://${SONARQUBE_SERVICE_HOST}:${SONARQUBE_SERVICE_PORT}/api/users/change_password"
+
+auth_ok() {
+  local login="$1"
+  local password="$2"
+  curl -fsS -u "${login}:${password}" "$auth_probe_url" >/dev/null 2>&1
+}
 
 wait_for_sonarqube_up "$status_url" 180 5
 
-if curl -fsS -u "${SONARQUBE_ADMIN_LOGIN}:${SONARQUBE_ADMIN_PASSWORD}" "$auth_url" | python3 -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("valid") else 1)' >/dev/null 2>&1; then
+if auth_ok "${SONARQUBE_ADMIN_LOGIN}" "${SONARQUBE_ADMIN_PASSWORD}"; then
   exit 0
 fi
 
 if [[ "$SONARQUBE_ADMIN_PASSWORD" == "admin" ]]; then
-  exit 0
+  print -u2 "failed to verify SonarQube admin credentials"
+  exit 1
 fi
 
-if curl -fsS -u "${SONARQUBE_ADMIN_LOGIN}:admin" "$auth_url" | python3 -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("valid") else 1)' >/dev/null 2>&1; then
+if auth_ok "${SONARQUBE_ADMIN_LOGIN}" "admin"; then
   curl -fsS -u "${SONARQUBE_ADMIN_LOGIN}:admin" -X POST "$change_url" \
     --data-urlencode "login=${SONARQUBE_ADMIN_LOGIN}" \
     --data-urlencode "previousPassword=admin" \
     --data-urlencode "password=${SONARQUBE_ADMIN_PASSWORD}" >/dev/null
 fi
 
+if auth_ok "${SONARQUBE_ADMIN_LOGIN}" "${SONARQUBE_ADMIN_PASSWORD}"; then
+  exit 0
+fi
+
+print -u2 "failed to verify SonarQube admin credentials after bootstrap"
+exit 1

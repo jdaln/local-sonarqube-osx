@@ -37,26 +37,23 @@ fi
 "$app_root/bin/run_sonarqube_stack.sh" --app-root "$app_root"
 
 status_url="http://${SONARQUBE_SERVICE_HOST}:${SONARQUBE_SERVICE_PORT}/api/system/status"
-auth_url="http://${SONARQUBE_SERVICE_HOST}:${SONARQUBE_SERVICE_PORT}/api/authentication/validate"
+auth_probe_url="http://${SONARQUBE_SERVICE_HOST}:${SONARQUBE_SERVICE_PORT}/api/users/search?logins=${SONARQUBE_ADMIN_LOGIN}"
 
 wait_for_sonarqube_up "$status_url" 180 5
 
 status_json="$(curl -fsS "$status_url")"
-auth_json="$(curl -fsS -u "${SONARQUBE_ADMIN_LOGIN}:${SONARQUBE_ADMIN_PASSWORD}" "$auth_url")"
+curl -fsS -u "${SONARQUBE_ADMIN_LOGIN}:${SONARQUBE_ADMIN_PASSWORD}" "$auth_probe_url" >/dev/null
 
-python3 - <<'PY' "$status_json" "$auth_json"
+python3 - <<'PY' "$status_json"
 import json
 import sys
 
 status = json.loads(sys.argv[1])
-auth = json.loads(sys.argv[2])
 
 assert status["status"] == "UP", status
-assert auth["valid"] is True, auth
 print("status=UP admin_login=true")
 PY
 
 if [[ "$skip_launchd_check" != "true" ]]; then
   launchctl print "gui/$(id -u)/${SONARQUBE_LAUNCHD_LABEL}" >/dev/null
 fi
-
